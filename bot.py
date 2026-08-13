@@ -44,7 +44,7 @@ bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 user_data = {}
 user_states = {} 
 
-def init_user(user_id, username):
+def init_user(user_id, username="User"):
     if user_id not in user_data:
         user_data[user_id] = {
             "balance": 0.0,
@@ -65,6 +65,17 @@ def bn_to_en_numbers(number_str):
     for bn, en in zip(bn_digits, en_digits):
         number_str = number_str.replace(bn, en)
     return number_str
+
+# --- স্টার্ট কমান্ড (/start) ---
+@bot.message_handler(commands=['start'])
+def start_cmd(message):
+    user_id = message.from_user.id
+    init_user(user_id, message.from_user.first_name)
+    bot.send_message(
+        message.chat.id, 
+        f"👋 Welcome {message.from_user.first_name}!\nSelect an option below to start earning.", 
+        reply_markup=main_menu()
+    )
 
 # --- টাস্ক স্ক্রিনশট হ্যান্ডলার ---
 @bot.message_handler(content_types=['photo'])
@@ -95,7 +106,7 @@ def admin_task_callback(call):
         action_type, target_user_id = call.data.split(":")
         target_user_id = int(target_user_id)
         
-        init_user(target_user_id, "User")
+        init_user(target_user_id)
         
         if action_type == "apptask":
             user_data[target_user_id]['balance'] += 8.0 # রিওয়ার্ড ৮ টাকা
@@ -120,7 +131,7 @@ def admin_withdraw_callback(call):
         target_user_id = int(data_parts[1])
         amount = float(data_parts[2]) if len(data_parts) > 2 else 0.0
         
-        init_user(target_user_id, "User")
+        init_user(target_user_id)
         
         if action_type == "appwd":
             user_data[target_user_id]['has_pending_withdraw'] = False
@@ -232,14 +243,14 @@ def handle_messages(message):
         bot.send_message(message.chat.id, "🎯 Available Tasks:\n1. Download App & Review.\n\nInstructions: Download the app from the provided link and submit a screenshot here.\n💰 Reward: 8 Tk", reply_markup=markup)
     
     elif text == "Wallet 💰":
-        bot.send_message(message.chat.id, f"💳 Wallet Details\n\nBalance: {user_data[user_id]['balance']} Tk\nStatus: Active ✅")
+        bot.send_message(message.chat.id, f"💳 Wallet Details\n\nBalance: {user_data[user_id]['balance']} Tk\nStatus: Active ✅", reply_markup=main_menu())
         
     elif text == "Withdraw 💳":
         balance = user_data[user_id]['balance']
         if user_data[user_id]['has_pending_withdraw']:
-            bot.send_message(message.chat.id, "⏳ **আপনার একটি উইথড্র রিকোয়েস্ট পেন্ডিং আছে!**\n\nএডমিন এটি প্রসেস না করা পর্যন্ত আপনি নতুন কোনো উইথড্র রিকোয়েস্ট পাঠাতে পারবেন না।", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "⏳ **আপনার একটি উইথড্র রিকোয়েস্ট পেন্ডিং আছে!**\n\nএডমিন এটি প্রসেস না করা পর্যন্ত আপনি নতুন কোনো উইথড্র রিকোয়েস্ট পাঠাতে পারবেন না।", parse_mode="Markdown", reply_markup=main_menu())
         elif balance < 100.0: # মিনিমাম ১০০ টাকা লিমিট চেক
-            bot.send_message(message.chat.id, f"❌ Minimum withdraw amount is **100 Tk**.\nYour current balance: `{balance} Tk`", parse_mode="Markdown")
+            bot.send_message(message.chat.id, f"❌ Minimum withdraw amount is **100 Tk**.\nYour current balance: `{balance} Tk`", parse_mode="Markdown", reply_markup=main_menu())
         else:
             markup = types.InlineKeyboardMarkup(row_width=2)
             markup.add(types.InlineKeyboardButton("💳 Bkash", callback_data="withdraw_bkash"), 
@@ -250,7 +261,7 @@ def handle_messages(message):
         bot_info = bot.get_me()
         ref_link = f"https://t.me/{bot_info.username}?start=ref_{user_id}"
         refer_msg = f"👥 Referral Program:\n\nEarn 5 Tk per referral!\n\n🔗 Your Referral Link:\n{ref_link}"
-        bot.send_message(message.chat.id, refer_msg)
+        bot.send_message(message.chat.id, refer_msg, reply_markup=main_menu())
 
     elif text == "Support Center 👥":
         markup = types.InlineKeyboardMarkup()
@@ -266,7 +277,7 @@ def handle_messages(message):
             f"💰 Current Balance: {data['balance']} Tk\n"
             f"👥 Total Referrals: {data['referrals']} members"
         )
-        bot.send_message(message.chat.id, profile_msg)
+        bot.send_message(message.chat.id, profile_msg, reply_markup=main_menu())
 
     elif text == "Channel 📢":
         markup = types.InlineKeyboardMarkup()
