@@ -49,6 +49,7 @@ def init_user(user_id, username="User"):
         user_data[user_id] = {
             "balance": 0.0,
             "referrals": 0,
+            "referred_by": None,
             "temp_method": None,
             "temp_number": None,
             "has_pending_withdraw": False
@@ -66,11 +67,39 @@ def bn_to_en_numbers(number_str):
         number_str = number_str.replace(bn, en)
     return number_str
 
-# --- স্টার্ট কমান্ড (/start) ---
+# --- স্টার্ট কমান্ড (/start) এবং রেফারেল প্রসেসিং ---
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     user_id = message.from_user.id
+    is_new_user = user_id not in user_data
+    
     init_user(user_id, message.from_user.first_name)
+
+    # রেফারেল লিংক চেক করা (/start ref_123456)
+    text_args = message.text.split()
+    if len(text_args) > 1 and is_new_user:
+        ref_code = text_args[1]
+        if ref_code.startswith("ref_"):
+            try:
+                referrer_id = int(ref_code.replace("ref_", ""))
+                if referrer_id != user_id and referrer_id in user_data:
+                    # রেফারকারীকে ৫ টাকা ও ১ রেফার যোগ করা
+                    user_data[referrer_id]['balance'] += 5.0
+                    user_data[referrer_id]['referrals'] += 1
+                    user_data[user_id]['referred_by'] = referrer_id
+                    
+                    # রেফারকারীকে মেসেজ পাঠানো
+                    try:
+                        bot.send_message(
+                            referrer_id, 
+                            f"🎉 **New Referral!**\n{message.from_user.first_name} joined using your link.\n💰 **5.00 Tk** added to your balance!",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
+            except ValueError:
+                pass
+
     bot.send_message(
         message.chat.id, 
         f"👋 Welcome {message.from_user.first_name}!\nSelect an option below to start earning.", 
@@ -305,6 +334,6 @@ def request_proof(call):
 
 # Web Server ও Telegram Bot Polling চালুকরণ
 if __name__ == '__main__':
-    keep_alive()  # <--- এটি Render-এর জন্য ব্যাকগ্রাউন্ড ওয়েব সার্ভার চালু করবে
-    print("🚀 Bot running with 8 Tk Task & 100 Tk Min Withdraw...")
+    keep_alive()
+    print("🚀 Bot running with Referral System, 8 Tk Task & 100 Tk Min Withdraw...")
     bot.polling(none_stop=True)
