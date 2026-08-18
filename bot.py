@@ -234,7 +234,7 @@ def wallet_info(message):
     msg = (
         "💳 **━━━ WALLET BALANCE ━━━**\n\n"
         f"💰 **Main Balance:** `{u['balance']} Tk`\n"
-        f"📌 **Minimum Withdraw:** `10.0 Tk`\n\n"
+        f"📌 **Minimum Withdraw:** `100.0 Tk`\n\n"
         "⚡ টাকা তুলতে 'Withdraw 💳' অপশনে চাপ দিন।"
     )
     bot.send_message(message.chat.id, msg, parse_mode="Markdown")
