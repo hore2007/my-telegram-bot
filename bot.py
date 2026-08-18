@@ -14,13 +14,14 @@ Thread(target=run).start()
 # ----------------- CONFIGURATION -----------------
 BOT_TOKEN = '8901853120:AAFWduGM0qe2zD3_HYvFicvBikF8ip3LCBE'
 ADMIN_ID = 6784510011
+BOT_USERNAME = "Hklucludxkhxtncdedugx_Bot" # আপনার বোটের ইউজারনেম
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
 
 # Data Stores
 user_data = {}
 user_states = {}
-tasks_list = [{"id": 1, "desc": "Join Channel", "link": "https://t.me/AppEarnBD", "reward": 5.0}]
+tasks_list = []  # অটো/ডামি টাস্ক সম্পূর্ণ ফাকা
 withdraw_requests = []
 task_proofs = []
 temp_task_data = {}
@@ -34,14 +35,20 @@ def init_user(user_id, referrer_id=None):
             "completed_tasks": [],
             "temp_task_id": None
         }
-        # রেফার বোনাস দেওয়া (৫ টাকা)
+        # রেফার বোনাস (৫ টাকা)
         if referrer_id and referrer_id in user_data and referrer_id != user_id:
             user_data[referrer_id]['balance'] += 5.0
             user_data[referrer_id]['referrals'] += 1
             try:
-                bot.send_message(referrer_id, "🎉 কেউ আপনার লিংকে জয়েন করেছে! আপনি ৫.০ টাকা বোনাস পেয়েছেন।")
+                bot.send_message(referrer_id, "🎉 কেউ আপনার লিংকে জয়েন করেছে! আপনি ৫.০ টাকা রেফার বোনাস পেয়েছেন।")
             except:
                 pass
+
+def clear_admin_state():
+    if ADMIN_ID in user_states:
+        del user_states[ADMIN_ID]
+    if ADMIN_ID in temp_task_data:
+        del temp_task_data[ADMIN_ID]
 
 # ----------------- KEYBOARDS -----------------
 def get_user_menu():
@@ -52,24 +59,33 @@ def get_user_menu():
 
 def get_admin_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("Task Adder ➕", "Withdrawal 💳", "Task Approved 📸", "User Info 👥")
+    markup.add("Task Adder ➕", "Manage Tasks 🗑️", "Withdrawal 💳", "Task Approved 📸")
+    markup.add("User Info 👥")
+    return markup
+
+def get_cancel_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    markup.add("❌ Cancel Task Add")
     return markup
 
 # ----------------- START COMMAND -----------------
 @bot.message_handler(commands=['start', 'admin'])
 def start_cmd(message):
     user_id = message.from_user.id
+    clear_admin_state()
     
-    # রেফারেল আইডি এক্সট্রাক্ট করা
     args = message.text.split()
     referrer_id = None
-    if len(args) > 1 and args[1].isdigit():
-        referrer_id = int(args[1])
+    if len(args) > 1:
+        try:
+            referrer_id = int(args[1])
+        except ValueError:
+            referrer_id = None
         
     init_user(user_id, referrer_id)
     
     if user_id == ADMIN_ID:
-        bot.send_message(message.chat.id, "👑 Admin Panel Activated!\nআপনার ইন্টারফেস:", reply_markup=get_admin_menu())
+        bot.send_message(message.chat.id, "👑 Admin Panel Activated!", reply_markup=get_admin_menu())
     else:
         bot.send_message(message.chat.id, f"👋 Welcome {message.from_user.first_name}!", reply_markup=get_user_menu())
 
@@ -77,52 +93,52 @@ def start_cmd(message):
 # 👑 ADMIN INTERFACE LOGIC
 # =================================================
 
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "❌ Cancel Task Add")
+def cancel_task_add(message):
+    clear_admin_state()
+    bot.send_message(ADMIN_ID, "🚫 টাস্ক যোগ করার প্রক্রিয়া বাতিল করা হয়েছে।", reply_markup=get_admin_menu())
+
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "User Info 👥")
 def admin_user_info(message):
+    clear_admin_state()
     total_users = len(user_data)
     user_ids_text = "\n".join([f"• {uid}" for uid in user_data.keys()]) if user_data else "কোনো মেম্বার নেই"
     msg = f"👥 Total Members: {total_users}\n\nUser IDs:\n{user_ids_text}"
-    bot.send_message(ADMIN_ID, msg)
+    bot.send_message(ADMIN_ID, msg, reply_markup=get_admin_menu())
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Task Adder ➕")
 def start_add_task(message):
+    clear_admin_state()
     user_states[ADMIN_ID] = 'waiting_task_desc'
-    bot.send_message(ADMIN_ID, "📝 Step 1: টাস্কের বিবরণ/নাম লিখুন:")
+    bot.send_message(ADMIN_ID, "📝 Step 1: টাস্কের বিবরণ/নাম লিখুন:", reply_markup=get_cancel_menu())
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_desc')
-def get_task_desc(message):
-    temp_task_data[ADMIN_ID] = {'desc': message.text}
-    user_states[ADMIN_ID] = 'waiting_task_link'
-    bot.send_message(ADMIN_ID, "🔗 Step 2: টাস্কের লিংকটি লিখুন:")
+# --- 🗑️ Task Delete Management ---
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Manage Tasks 🗑️")
+def manage_tasks(message):
+    clear_admin_state()
+    if not tasks_list:
+        bot.send_message(ADMIN_ID, "❌ বর্তমানে কোনো টাস্ক নেই।", reply_markup=get_admin_menu())
+        return
+    
+    markup = types.InlineKeyboardMarkup()
+    for task in tasks_list:
+        markup.add(types.InlineKeyboardButton(f"🗑️ Delete: {task['desc']} ({task['reward']} Tk)", callback_data=f"del_task:{task['id']}"))
+    bot.send_message(ADMIN_ID, "🗑️ ডিলেট করার জন্য টাস্কের ওপর ক্লিক করুন:", reply_markup=markup)
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_link')
-def get_task_link(message):
-    temp_task_data[ADMIN_ID]['link'] = message.text
-    user_states[ADMIN_ID] = 'waiting_task_reward'
-    bot.send_message(ADMIN_ID, "💰 Step 3: টাস্কের প্রাইস কত টাকা হবে? (যেমন: 5.0):")
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_reward')
-def get_task_reward(message):
-    try:
-        reward = float(message.text)
-        new_id = len(tasks_list) + 1
-        new_task = {
-            "id": new_id,
-            "desc": temp_task_data[ADMIN_ID]['desc'],
-            "link": temp_task_data[ADMIN_ID]['link'],
-            "reward": reward
-        }
-        tasks_list.append(new_task)
-        del user_states[ADMIN_ID]
-        del temp_task_data[ADMIN_ID]
-        bot.send_message(ADMIN_ID, f"✅ Task Added Successfully!\n\n📌 Task: {new_task['desc']}\n💰 Price: {new_task['reward']} Tk", reply_markup=get_admin_menu())
-    except ValueError:
-        bot.send_message(ADMIN_ID, "❌ ভুল ইনপুট! শুধু সংখ্যা লিখুন (যেমন: 5.0):")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("del_task:"))
+def delete_task_callback(call):
+    if call.from_user.id == ADMIN_ID:
+        task_id = int(call.data.split(":")[1])
+        global tasks_list
+        tasks_list = [t for t in tasks_list if t['id'] != task_id]
+        bot.answer_callback_query(call.id, "✅ টাস্কটি সফলভাবে ডিলেট করা হয়েছে!", show_alert=True)
+        bot.edit_message_text("✅ টাস্কটি সফলভাবে ডিলেট করা হয়েছে!", chat_id=call.message.chat.id, message_id=call.message.message_id)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Withdrawal 💳")
 def admin_withdrawals(message):
+    clear_admin_state()
     if not withdraw_requests:
-        bot.send_message(ADMIN_ID, "💳 Withdrawal Section:\n\nবর্তমানে কোনো পেন্ডিং উইথড্র নেই।")
+        bot.send_message(ADMIN_ID, "💳 Withdrawal Section:\n\nবর্তমানে কোনো পেন্ডিং উইথড্র নেই।", reply_markup=get_admin_menu())
         return
     
     for wd in withdraw_requests:
@@ -135,8 +151,9 @@ def admin_withdrawals(message):
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Task Approved 📸")
 def admin_task_proofs(message):
+    clear_admin_state()
     if not task_proofs:
-        bot.send_message(ADMIN_ID, "📸 Task Approved Section:\n\nবর্তমানে কোনো পেন্ডিং প্রুফ নেই।")
+        bot.send_message(ADMIN_ID, "📸 Task Approved Section:\n\nবর্তমানে কোনো পেন্ডিং প্রুফ নেই।", reply_markup=get_admin_menu())
         return
     
     for proof in task_proofs:
@@ -148,6 +165,36 @@ def admin_task_proofs(message):
         bot.send_photo(ADMIN_ID, proof['photo_id'], 
                        caption=f"📸 Submitted Proof:\nUser ID: {proof['user_id']}\nUser: {proof['user_name']}\nTask: {proof['task_name']}\nPrice: {proof['reward']} Tk", 
                        reply_markup=markup)
+
+# Admin Dynamic Task Inputs
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_desc')
+def get_task_desc(message):
+    temp_task_data[ADMIN_ID] = {'desc': message.text}
+    user_states[ADMIN_ID] = 'waiting_task_link'
+    bot.send_message(ADMIN_ID, "🔗 Step 2: টাস্কের লিংকটি লিখুন:", reply_markup=get_cancel_menu())
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_link')
+def get_task_link(message):
+    temp_task_data[ADMIN_ID]['link'] = message.text
+    user_states[ADMIN_ID] = 'waiting_task_reward'
+    bot.send_message(ADMIN_ID, "💰 Step 3: টাস্কের প্রাইস কত টাকা হবে? (যেমন: 5.0):", reply_markup=get_cancel_menu())
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID) == 'waiting_task_reward')
+def get_task_reward(message):
+    try:
+        reward = float(message.text)
+        new_id = len(tasks_list) + 100
+        new_task = {
+            "id": new_id,
+            "desc": temp_task_data[ADMIN_ID]['desc'],
+            "link": temp_task_data[ADMIN_ID]['link'],
+            "reward": reward
+        }
+        tasks_list.append(new_task)
+        clear_admin_state()
+        bot.send_message(ADMIN_ID, f"✅ Task Added Successfully!\n\n📌 Task: {new_task['desc']}\n💰 Price: {new_task['reward']} Tk", reply_markup=get_admin_menu())
+    except ValueError:
+        bot.send_message(ADMIN_ID, "❌ ভুল ইনপুট! শুধু সংখ্যা লিখুন (যেমন: 5.0):", reply_markup=get_cancel_menu())
 
 # =================================================
 # 👤 USER INTERFACE LOGIC
@@ -167,20 +214,28 @@ def wallet_info(message):
 
 @bot.message_handler(func=lambda m: m.text == "Invite 📩")
 def invite_info(message):
-    bot.send_message(message.chat.id, f"📩 Invite Link:\nhttps://t.me/AppEarnBD_bot?start={message.from_user.id}\n\n🎉 প্রতি রেফারে পাবেন ৫.০ টাকা বোনাস এবং জীবনের সব উপার্জনের উপর ২০% লাইফটাইম কমিশন!")
+    user_id = message.from_user.id
+    init_user(user_id)
+    invite_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
+    bot.send_message(message.chat.id, f"📩 Invite Link:\n{invite_link}\n\n🎉 প্রতি রেফারে পাবেন ৫.০ টাকা বোনাস এবং ২০% লাইফটাইম কমিশন!")
 
 @bot.message_handler(func=lambda m: m.text == "Channel 📢")
 def channel_info(message):
-    bot.send_message(message.chat.id, "📢 Join Channel: https://t.me/AppEarnBD")
+    bot.send_message(message.chat.id, "📢 Join Channel: https://t.me/AppEarnBD_official")
 
 @bot.message_handler(func=lambda m: m.text == "Support Center 👥")
 def support_info(message):
-    bot.send_message(message.chat.id, "🎧 Support Center:\nযেকোনো সমস্যায় অ্যাডমিনের সাথে যোগাযোগ করুন: @AppEarnBD_Admin")
+    bot.send_message(message.chat.id, "🎧 Support Center:\nযেকোনো সমস্যায় অ্যাডমিনের সাথে যোগাযোগ করুন: @AppEarnBD")
 
 @bot.message_handler(func=lambda m: m.text == "Task 📝")
 def show_tasks(message):
     user_id = message.from_user.id
     init_user(user_id)
+    
+    if not tasks_list:
+        bot.send_message(message.chat.id, "🎯 বর্তমানে কোনো টাস্ক উপলব্ধ নেই।")
+        return
+
     markup = types.InlineKeyboardMarkup()
     for task in tasks_list:
         status = "✅ Done" if task['id'] in user_data[user_id]['completed_tasks'] else "📌"
@@ -202,7 +257,7 @@ def view_task_callback(call):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔗 Open Link", url=task['link']),
                    types.InlineKeyboardButton("📤 Upload Proof", callback_data=f"upload_proof:{task_id}"))
-        bot.send_message(call.message.chat.id, f"🎯 {task['desc']}\n💰 Reward: {task['reward']} Tk\n\nকাজটি শেষ করে স্ক্রিনশট দিন।", reply_markup=markup)
+        bot.send_message(call.message.chat.id, f"🎯 Task: {task['desc']}\n💰 Reward: {task['reward']} Tk\n\nকাজটি শেষ করে স্ক্রিনশট দিন।", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("upload_proof:"))
 def prompt_proof(call):
@@ -270,7 +325,6 @@ def approve_proof(call):
     user_data[user_id]['balance'] += reward
     user_data[user_id]['completed_tasks'].append(task_id)
     
-    # 🌟 ২০% লাইফটাইম রেফার কমিশন যোগ
     referrer_id = user_data[user_id].get('referred_by')
     if referrer_id and referrer_id in user_data:
         commission = reward * 0.20
