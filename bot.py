@@ -13,7 +13,7 @@ Thread(target=run).start()
 
 # ----------------- CONFIGURATION -----------------
 BOT_TOKEN = '8901853120:AAFWduGM0qe2zD3_HYvFicvBikF8ip3LCBE'
-ADMIN_ID = 6784510011
+ADMIN_ID = 7989323715
 BOT_USERNAME = "Hklucludxkhxtncdedugx_Bot"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
@@ -354,8 +354,8 @@ def withdraw_req(message):
     user_id = message.from_user.id
     init_user(user_id)
     
-    if user_data[user_id]['balance'] < 10.0:
-        bot.send_message(message.chat.id, "❌ **উইথড্র করতে পারবেন না!**\n\nআপনার ব্যালেন্স ন্যূনতম **১০ টাকা** হতে হবে।", parse_mode="Markdown")
+    if user_data[user_id]['balance'] < 100.0:
+        bot.send_message(message.chat.id, "❌ **উইথড্র করতে পারবেন না!**\n\nআপনার ব্যালেন্স ন্যূনতম **১০০ টাকা** হতে হবে।", parse_mode="Markdown")
         return
         
     markup = types.InlineKeyboardMarkup()
@@ -380,8 +380,8 @@ def process_withdraw_amount(message):
     user_id = message.from_user.id
     try:
         amount = float(message.text)
-        if amount < 10.0:
-            bot.send_message(message.chat.id, "❌ ন্যূনতম উইথড্র পরিমাণ ১০ টাকা। পুনরায় সঠিক অ্যামাউন্ট লিখুন:")
+        if amount < 100.0:
+            bot.send_message(message.chat.id, "❌ ন্যূনতম উইথড্র পরিমাণ ১০০ টাকা। পুনরায় সঠিক অ্যামাউন্ট লিখুন:")
             return
         if amount > user_data[user_id]['balance']:
             bot.send_message(message.chat.id, f"❌ আপনার পর্যাপ্ত ব্যালেন্স নেই! বর্তমান ব্যালেন্স: {user_data[user_id]['balance']} Tk\nপুনরায় পরিমাণ লিখুন:")
