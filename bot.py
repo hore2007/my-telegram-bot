@@ -25,6 +25,7 @@ tasks_list = []
 withdraw_requests = []
 task_proofs = []
 temp_task_data = {}
+withdraw_temp = {}
 
 def init_user(user_id, referrer_id=None):
     if user_id not in user_data:
@@ -99,7 +100,6 @@ def cancel_task_add(message):
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "User Info 👥")
 def admin_user_info(message):
-    clear_admin_state()
     total_users = len(user_data)
     
     if not user_data:
@@ -127,7 +127,6 @@ def start_add_task(message):
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Manage Tasks 🗑️")
 def manage_tasks(message):
-    clear_admin_state()
     if not tasks_list:
         bot.send_message(ADMIN_ID, "❌ বর্তমানে কোনো টাস্ক নেই।", reply_markup=get_admin_menu())
         return
@@ -148,7 +147,6 @@ def delete_task_callback(call):
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Withdrawal 💳")
 def admin_withdrawals(message):
-    clear_admin_state()
     if not withdraw_requests:
         bot.send_message(ADMIN_ID, "💳 **Withdrawal Section:**\n\nবর্তমানে কোনো পেন্ডিং উইথড্র নেই।", parse_mode="Markdown", reply_markup=get_admin_menu())
         return
@@ -157,13 +155,12 @@ def admin_withdrawals(message):
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton("✅ Approve Paid", callback_data=f"app_wd:{wd['user_id']}:{wd['amount']}"),
-            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_wd:{wd['user_id']}")
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_wd:{wd['user_id']}:{wd['amount']}")
         )
-        bot.send_message(ADMIN_ID, f"💳 **Pending Request:**\n\n👤 User ID: `{wd['user_id']}`\n🏷️ Name: {wd['name']}\n📱 Number: `{wd['number']}`\n💰 Amount: {wd['amount']} Tk", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(ADMIN_ID, f"💳 **Pending Request:**\n\n👤 User ID: `{wd['user_id']}`\n🏷️ Name: {wd['name']}\n🏦 Method: **{wd['method']}**\n📱 Number: `{wd['number']}`\n💰 Amount: **{wd['amount']} Tk**", parse_mode="Markdown", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text == "Task Approved 📸")
 def admin_task_proofs(message):
-    clear_admin_state()
     if not task_proofs:
         bot.send_message(ADMIN_ID, "📸 **Task Approved Section:**\n\nবর্তমানে কোনো পেন্ডিং প্রুফ নেই।", parse_mode="Markdown", reply_markup=get_admin_menu())
         return
@@ -172,7 +169,7 @@ def admin_task_proofs(message):
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton("✅ Approve", callback_data=f"app_p:{proof['user_id']}:{proof['task_id']}"),
-            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_p:{proof['user_id']}")
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_p:{proof['user_id']}:{proof['task_id']}")
         )
         bot.send_photo(ADMIN_ID, proof['photo_id'], 
                        caption=f"📸 **Submitted Proof:**\n\n👤 User ID: `{proof['user_id']}`\n🏷️ User: {proof['user_name']}\n📌 Task: {proof['task_name']}\n💰 Price: {proof['reward']} Tk", 
@@ -301,8 +298,15 @@ def view_task_callback(call):
     init_user(user_id)
     task_id = int(call.data.split(":")[1])
     
+    # Check if completed
     if task_id in user_data[user_id]['completed_tasks']:
         bot.answer_callback_query(call.id, "❌ আপনি এই টাস্কটি আগেই সম্পূর্ণ করেছেন!", show_alert=True)
+        return
+
+    # Check if proof is already pending
+    already_submitted = any(p['user_id'] == user_id and p['task_id'] == task_id for p in task_proofs)
+    if already_submitted:
+        bot.answer_callback_query(call.id, "⏳ আপনি এই টাস্কের প্রুফ আগেই জমা দিয়েছেন এবং এটি অ্যাডমিন রিভিউতে আছে!", show_alert=True)
         return
 
     task = next((t for t in tasks_list if t['id'] == task_id), None)
@@ -314,9 +318,16 @@ def view_task_callback(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("upload_proof:"))
 def prompt_proof(call):
+    user_id = call.from_user.id
     task_id = int(call.data.split(":")[1])
-    user_data[call.from_user.id]['temp_task_id'] = task_id
-    user_states[call.from_user.id] = 'waiting_for_task_proof'
+    
+    already_submitted = any(p['user_id'] == user_id and p['task_id'] == task_id for p in task_proofs)
+    if already_submitted:
+        bot.answer_callback_query(call.id, "⏳ আপনি এই টাস্কের প্রুফ আগেই জমা দিয়েছেন!", show_alert=True)
+        return
+        
+    user_data[user_id]['temp_task_id'] = task_id
+    user_states[user_id] = 'waiting_for_task_proof'
     bot.send_message(call.message.chat.id, "📸 **আপনার সম্পন্ন করা কাজের স্ক্রিনশটটি এখানে পাঠান:**", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo'])
@@ -343,27 +354,69 @@ def withdraw_req(message):
     user_id = message.from_user.id
     init_user(user_id)
     
-    # মিনিমাম উইথড্র ১০ টাকা করা হয়েছে
     if user_data[user_id]['balance'] < 10.0:
         bot.send_message(message.chat.id, "❌ **উইথড্র করতে পারবেন না!**\n\nআপনার ব্যালেন্স ন্যূনতম **১০ টাকা** হতে হবে।", parse_mode="Markdown")
         return
         
-    user_states[user_id] = 'waiting_for_withdraw_number'
-    bot.send_message(message.chat.id, "💳 **আপনার বিকাশ/নগদ নম্বরটি লিখুন:**", parse_mode="Markdown")
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("বিকাশ (bKash)", callback_data="wd_method:bKash"),
+        types.InlineKeyboardButton("নগদ (Nagad)", callback_data="wd_method:Nagad")
+    )
+    bot.send_message(message.chat.id, "💳 **পেমেন্ট গ্রহণের মাধ্যম নির্বাচন করুন:**", parse_mode="Markdown", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("wd_method:"))
+def select_withdraw_method(call):
+    user_id = call.from_user.id
+    method = call.data.split(":")[1]
+    withdraw_temp[user_id] = {"method": method}
+    user_states[user_id] = 'waiting_for_withdraw_amount'
+    
+    bot.edit_message_text(f"✅ **{method}** সিলেক্ট করা হয়েছে।\n\n💰 **কত টাকা উইথড্র দিতে চান তা লিখুন:** (আপনার ব্যালেন্স: {user_data[user_id]['balance']} Tk)", 
+                          chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == 'waiting_for_withdraw_amount')
+def process_withdraw_amount(message):
+    user_id = message.from_user.id
+    try:
+        amount = float(message.text)
+        if amount < 10.0:
+            bot.send_message(message.chat.id, "❌ ন্যূনতম উইথড্র পরিমাণ ১০ টাকা। পুনরায় সঠিক অ্যামাউন্ট লিখুন:")
+            return
+        if amount > user_data[user_id]['balance']:
+            bot.send_message(message.chat.id, f"❌ আপনার পর্যাপ্ত ব্যালেন্স নেই! বর্তমান ব্যালেন্স: {user_data[user_id]['balance']} Tk\nপুনরায় পরিমাণ লিখুন:")
+            return
+            
+        withdraw_temp[user_id]['amount'] = amount
+        user_states[user_id] = 'waiting_for_withdraw_number'
+        bot.send_message(message.chat.id, f"📱 **আপনার {withdraw_temp[user_id]['method']} নাম্বারটি লিখুন:**", parse_mode="Markdown")
+        
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ ভুল ইনপুট! শুধু সংখ্যা লিখুন (যেমন: 50):")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == 'waiting_for_withdraw_number')
-def process_withdraw(message):
+def process_withdraw_number(message):
     user_id = message.from_user.id
-    amount = user_data[user_id]['balance']
+    number = message.text
+    method = withdraw_temp[user_id]['method']
+    amount = withdraw_temp[user_id]['amount']
+    
+    # Deduct balance
+    user_data[user_id]['balance'] -= amount
+    
     withdraw_requests.append({
         "user_id": user_id, 
         "name": message.from_user.first_name, 
-        "number": message.text, 
+        "method": method,
+        "number": number, 
         "amount": amount
     })
-    user_data[user_id]['balance'] = 0.0
-    bot.send_message(message.chat.id, "✅ **আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!**", parse_mode="Markdown")
+    
+    bot.send_message(message.chat.id, f"✅ **আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!**\n\n🏦 Method: {method}\n📱 Number: {number}\n💰 Amount: {amount} Tk", parse_mode="Markdown")
+    
     del user_states[user_id]
+    if user_id in withdraw_temp:
+        del withdraw_temp[user_id]
 
 # =================================================
 # ⚙️ APPROVAL & COMMISSION LOGIC
@@ -398,7 +451,12 @@ def approve_proof(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rej_p:"))
 def reject_proof(call):
-    user_id = int(call.data.split(":")[1])
+    _, user_id, task_id = call.data.split(":")
+    user_id, task_id = int(user_id), int(task_id)
+    
+    global task_proofs
+    task_proofs = [p for p in task_proofs if not (p['user_id'] == user_id and p['task_id'] == task_id)]
+    
     bot.send_message(user_id, "❌ **আপনার জমা দেওয়া টাস্ক প্রুফটি বাতিল করা হয়েছে।**", parse_mode="Markdown")
     bot.edit_message_caption("❌ Task Rejected!", chat_id=call.message.chat.id, message_id=call.message.message_id)
 
@@ -413,12 +471,19 @@ def approve_wd(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rej_wd:"))
 def reject_wd(call):
-    user_id = int(call.data.split(":")[1])
+    _, user_id, amount = call.data.split(":")
+    user_id = int(user_id)
+    amount = float(amount)
+    
+    # Refund balance on rejection
+    init_user(user_id)
+    user_data[user_id]['balance'] += amount
+    
     global withdraw_requests
     withdraw_requests = [w for w in withdraw_requests if str(w['user_id']) != str(user_id)]
     
-    bot.send_message(user_id, "❌ **আপনার উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে।**", parse_mode="Markdown")
-    bot.edit_message_text("❌ Withdrawal Rejected!", chat_id=call.message.chat.id, message_id=call.message.message_id)
+    bot.send_message(user_id, f"❌ **আপনার {amount} টাকা উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে।**\nটাকা পুনরায় আপনার ব্যালেন্সে যুক্ত করা হয়েছে।", parse_mode="Markdown")
+    bot.edit_message_text("❌ Withdrawal Rejected & Refunded!", chat_id=call.message.chat.id, message_id=call.message.message_id)
 
 if __name__ == '__main__':
     bot.polling(none_stop=True)
