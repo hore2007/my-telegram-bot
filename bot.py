@@ -13,7 +13,7 @@ Thread(target=run).start()
 
 # ----------------- CONFIGURATION -----------------
 BOT_TOKEN = '8901853120:AAFWduGM0qe2zD3_HYvFicvBikF8ip3LCBE'
-ADMIN_ID = 7989323715
+ADMIN_ID = 6784510011
 BOT_USERNAME = "Hklucludxkhxtncdedugx_Bot"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
